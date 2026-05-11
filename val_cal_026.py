@@ -156,13 +156,29 @@ if archivos and st.button("⚙️ Generar Archivo Consolidado", type="primary"):
         st.success(f"✅ {len(df_consolidado)} archivo(s) procesado(s) correctamente.")
         st.dataframe(df_consolidado, use_container_width=True)
 
-        buffer = BytesIO()
-        df_consolidado.to_csv(buffer, index=False, encoding="utf-8-sig")
-        buffer.seek(0)
+        col_csv, col_xlsx = st.columns(2)
 
-        st.download_button(
-            label="📥 Descargar CSV",
-            data=buffer,
-            file_name=f"consolidado_{año}_{mes:02d}.csv",
-            mime="text/csv",
-        )
+        with col_csv:
+            buffer_csv = BytesIO()
+            df_consolidado.to_csv(buffer_csv, index=False, encoding="utf-8-sig")
+            buffer_csv.seek(0)
+            st.download_button(
+                label="📥 Descargar CSV",
+                data=buffer_csv,
+                file_name=f"consolidado_{año}_{mes:02d}.csv",
+                mime="text/csv",
+                use_container_width=True,
+            )
+
+        with col_xlsx:
+            buffer_xlsx = BytesIO()
+            with pd.ExcelWriter(buffer_xlsx, engine="openpyxl") as writer:
+                df_consolidado.to_excel(writer, index=False, sheet_name="Consolidado")
+            buffer_xlsx.seek(0)
+            st.download_button(
+                label="📥 Descargar Excel",
+                data=buffer_xlsx,
+                file_name=f"consolidado_{año}_{mes:02d}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+            )
