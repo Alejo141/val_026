@@ -1,104 +1,161 @@
 import streamlit as st
 import pandas as pd
-import os
 from io import BytesIO
 
+# ── Configuración de página ──────────────────────────────────────────────────
+st.set_page_config(page_title="Generador CSV", page_icon="📊", layout="wide")
 st.title("📊 Generador de Archivos CSV")
 
-# Entrada de parámetros
-mes = st.number_input("Mes (1-12):", min_value=1, max_value=12, value=12)
-año = st.number_input("Año:", min_value=2000, max_value=2100, value=2024)
+# ── Parámetros de entrada ────────────────────────────────────────────────────
+col1, col2 = st.columns(2)
+with col1:
+    mes = st.number_input("Mes (1-12):", min_value=1, max_value=12, value=12)
+with col2:
+    año = st.number_input("Año:", min_value=2000, max_value=2100, value=2024)
 
-ipp_base = 147.65
+IPP_BASE = 147.65
 
-# Subida de archivos
+# ── Mapa de celdas: nombre → (fila, columna) ────────────────────────────────
+CELDAS = {
+    "Departamento":            (5,   1),
+    "Municipio":               (5,   2),
+    "Divipola":                (5,   3),
+    "Radiacion":               (5,   4),
+    "Tipo de Sistema":         (8,   2),
+    "Almacenamiento":          (9,   2),
+    "Whd":                     (10,  2),
+    "IPPm_1":                  (12,  2),
+    "Cartera vencida 90_360":  (78,  2),
+    "Cartera_Subs":            (79,  2),
+    "Tasa_Costo_Fin":          (81,  2),
+    "AMGCnu_0":                (110, 2),
+    "AMGCvi_0":                (111, 2),
+    "AMGCau_0":                (112, 2),
+    "AMGCnf_0":                (113, 2),
+    "AMGCro_0":                (114, 2),
+    "AMGCnu_m":                (110, 3),
+    "AMGCvi_m":                (111, 3),
+    "AMGCau_m":                (112, 3),
+    "AMGCnf_m":                (113, 3),
+    "AMGCro_m":                (114, 3),
+    "Inversio":                (122, 2),
+    "AMGCm":                   (123, 2),
+    "Disponibilidad":          (124, 2),
+    "Facturacion_mes":         (125, 2),
+    "Subsidio_mes":            (126, 2),
+    "Tarifa_mes":              (129, 2),
+    "Empresa SIN":             (122, 4),
+    "Tarifa SIN":              (122, 5),
+    "Subsidio_dia":            (125, 5),
+    "Porcentaje_subsidio":     (126, 5),
+}
+
+# ── Orden final de columnas ──────────────────────────────────────────────────
+ORDEN_COLUMNAS = [
+    "Archivo",
+    "Departamento", "Municipio", "Divipola", "Radiacion",
+    "Tipo de Sistema", "Almacenamiento", "Whd", "llave",
+    "IPP_base", "IPPm_1",
+    "Cartera vencida 90_360", "Cartera_Subs", "Tasa_Costo_Fin",
+    "AMGCnu_0", "AMGCvi_0", "AMGCau_0", "AMGCnf_0", "AMGCro_0",
+    "AMGCnu_m", "AMGCvi_m", "AMGCau_m", "AMGCnf_m", "AMGCro_m",
+    "Inversio", "AMGCm", "Disponibilidad", "Facturacion_mes",
+    "Subsidio_mes", "Tarifa_mes",
+    "Empresa SIN", "Tarifa SIN",
+    "Subsidio_dia", "tarifa_dia", "fact_dia",
+    "Porcentaje_subsidio",
+    "Año", "Mes",
+]
+
+
+def extraer_fila(df: pd.DataFrame, nombre_archivo: str) -> dict:
+    """Extrae todos los valores de un DataFrame usando el mapa CELDAS."""
+    fila = {"Archivo": nombre_archivo}
+
+    for campo, (row, col) in CELDAS.items():
+        try:
+            fila[campo] = df.iloc[row, col]
+        except IndexError:
+            fila[campo] = None
+            st.warning(f"⚠️ [{nombre_archivo}] Celda ({row},{col}) fuera de rango para '{campo}'.")
+
+    fila["IPP_base"] = IPP_BASE
+    return fila
+
+
+def calcular_campos_derivados(fila: dict) -> dict:
+    """Calcula los campos derivados: llave, tarifa_dia y fact_dia."""
+    # llave = Divipola + Whd
+    divipola = fila.get("Divipola", "")
+    whd      = fila.get("Whd", "")
+    fila["llave"] = f"{divipola}{whd}"
+
+    # tarifa_dia = Tarifa_mes / Disponibilidad
+    try:
+        disponibilidad = float(fila.get("Disponibilidad") or 0)
+        fila["tarifa_dia"] = float(fila["Tarifa_mes"]) / disponibilidad if disponibilidad else None
+    except (TypeError, ValueError):
+        fila["tarifa_dia"] = None
+
+    # fact_dia = Facturacion_mes / Disponibilidad
+    try:
+        disponibilidad = float(fila.get("Disponibilidad") or 0)
+        fila["fact_dia"] = float(fila["Facturacion_mes"]) / disponibilidad if disponibilidad else None
+    except (TypeError, ValueError):
+        fila["fact_dia"] = None
+
+    return fila
+
+
+def procesar_archivos(archivos, mes: int, año: int) -> pd.DataFrame:
+    """Procesa la lista de archivos y retorna un DataFrame consolidado."""
+    filas = []
+    barra = st.progress(0, text="Procesando archivos…")
+
+    for i, archivo in enumerate(archivos):
+        try:
+            df = pd.read_excel(archivo, sheet_name=0, header=None)
+            fila = extraer_fila(df, archivo.name)
+            fila = calcular_campos_derivados(fila)
+            fila["Año"] = año
+            fila["Mes"] = mes
+            filas.append(fila)
+        except Exception as e:
+            st.error(f"❌ Error procesando '{archivo.name}': {e}")
+
+        barra.progress((i + 1) / len(archivos), text=f"Procesando {i + 1}/{len(archivos)}")
+
+    barra.empty()
+
+    if not filas:
+        return pd.DataFrame()
+
+    df_resultado = pd.DataFrame(filas)
+
+    # Reordena columnas; agrega al final las que no estén en ORDEN_COLUMNAS
+    columnas_extra = [c for c in df_resultado.columns if c not in ORDEN_COLUMNAS]
+    df_resultado = df_resultado[ORDEN_COLUMNAS + columnas_extra]
+
+    return df_resultado
+
+
+# ── Interfaz de carga ────────────────────────────────────────────────────────
 st.write("### Cargar archivos Excel")
-archivos = st.file_uploader("Selecciona los archivos (.xlsx)", type=["xlsx"], accept_multiple_files=True)
+archivos = st.file_uploader(
+    "Selecciona uno o varios archivos (.xlsx)",
+    type=["xlsx"],
+    accept_multiple_files=True,
+)
 
-if archivos and st.button("Generar Archivo Consolidado"):
-    datos_consolidados = []
+if archivos and st.button("⚙️ Generar Archivo Consolidado", type="primary"):
+    df_consolidado = procesar_archivos(archivos, mes, año)
 
-    for archivo in archivos:
-        df = pd.read_excel(archivo, sheet_name=0)
+    if df_consolidado.empty:
+        st.warning("⚠️ No se encontraron datos válidos para consolidar.")
+    else:
+        st.success(f"✅ {len(df_consolidado)} archivo(s) procesado(s) correctamente.")
+        st.dataframe(df_consolidado, use_container_width=True)
 
-        # Extrae valores de celdas específicas
-        valor_a1 = df.iloc[5, 1]  
-        valor_a2 = df.iloc[5, 2]  
-        valor_a3 = df.iloc[5, 3]  
-        valor_a4 = df.iloc[5, 4]  
-        valor_a5 = df.iloc[8, 2]  
-        valor_a6 = df.iloc[9, 2]  
-        valor_a7 = df.iloc[10, 2]  
-        valor_a8 = df.iloc[12, 2]  
-        valor_a9 = df.iloc[78, 2]  
-        valor_a10 = df.iloc[79, 2]  
-        valor_a11 = df.iloc[81, 2]  
-        valor_a12 = df.iloc[110, 2]  
-        valor_a13 = df.iloc[111, 2]  
-        valor_a14 = df.iloc[112, 2]  
-        valor_a15 = df.iloc[113, 2]  
-        valor_a16 = df.iloc[114, 2]  
-        valor_a17 = df.iloc[110, 3]  
-        valor_a18 = df.iloc[111, 3]  
-        valor_a19 = df.iloc[112, 3]  
-        valor_a20 = df.iloc[113, 3]  
-        valor_a21 = df.iloc[114, 3]  
-        valor_a22 = df.iloc[122, 2]  
-        valor_a23 = df.iloc[123, 2]  
-        valor_a24 = df.iloc[124, 2]  
-        valor_a25 = df.iloc[125, 2]  
-        valor_a26 = df.iloc[127, 2]  
-        valor_a27 = df.iloc[129, 2]  
-        valor_a28 = df.iloc[122, 4]  
-        valor_a29 = df.iloc[122, 5]  
-        valor_a30 = df.iloc[125, 5]  
-        valor_a31 = df.iloc[126, 5]  
-
-        datos_consolidados.append({
-            'Archivo': archivo.name,
-            'Departamento': valor_a1,
-            'Municipio': valor_a2,
-            'Divipola': valor_a3,
-            'Radiacion': valor_a4,
-            'Tipo de Sistema': valor_a5,
-            'Almacenamiento': valor_a6,
-            'Whd': valor_a7,
-            'IPP_base': ipp_base,
-            'IPPm_1': valor_a8,
-            'Cartera vencida 90_360': valor_a9,
-            'Cartera_Subs': valor_a10,
-            'Tasa_Costo_Fin': valor_a11,
-            'AMGCnu_0': valor_a12,
-            'AMGCvi_0': valor_a13,
-            'AMGCau_0': valor_a14,
-            'AMGCnf_0': valor_a15,
-            'AMGCro_0': valor_a16,
-            'AMGCnu_m': valor_a17,
-            'AMGCvi_m': valor_a18,
-            'AMGCau_m': valor_a19,
-            'AMGCnf_m': valor_a20,
-            'AMGCro_m': valor_a21,
-            'Inversio': valor_a22,
-            'AMGCm': valor_a23,
-            'Disponibilidad': valor_a24,
-            'Facturacion_mes': valor_a25,
-            'Subsidio_mes': valor_a26,
-            'Tarifa_mes': valor_a27,
-            'Empresa SIN': valor_a28,
-            'Tarifa SIN': valor_a29,
-            'Subsidio_dia': valor_a30,
-            'Porcentaje_subsidio': valor_a31,
-            'Año': año,
-            'Mes': mes
-        })
-
-    if datos_consolidados:
-        df_consolidado = pd.DataFrame(datos_consolidados)
-
-        # Mostrar tabla en la app
-        st.dataframe(df_consolidado)
-
-        # Descargar CSV
         buffer = BytesIO()
         df_consolidado.to_csv(buffer, index=False, encoding="utf-8-sig")
         buffer.seek(0)
@@ -106,8 +163,6 @@ if archivos and st.button("Generar Archivo Consolidado"):
         st.download_button(
             label="📥 Descargar CSV",
             data=buffer,
-            file_name="consolidado.csv",
-            mime="text/csv"
+            file_name=f"consolidado_{año}_{mes:02d}.csv",
+            mime="text/csv",
         )
-    else:
-        st.warning("⚠️ No se encontraron datos válidos para consolidar.")
