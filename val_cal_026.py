@@ -42,7 +42,7 @@ CELDAS = {
     "AMGCm":                   (123, 2),
     "Disponibilidad":          (124, 2),
     "Facturacion_mes":         (125, 2),
-    "Subsidio_mes":            (126, 2),
+    "Subsidio_mes":            (127, 2),
     "Tarifa_mes":              (129, 2),
     "Empresa SIN":             (122, 4),
     "Tarifa SIN":              (122, 5),
