@@ -114,7 +114,7 @@ def procesar_archivos(archivos, mes: int, año: int) -> pd.DataFrame:
 
     for i, archivo in enumerate(archivos):
         try:
-            df = pd.read_excel(archivo, sheet_name=0, header=None)
+            df = pd.read_excel(archivo, sheet_name=0)
             fila = extraer_fila(df, archivo.name)
             fila = calcular_campos_derivados(fila)
             fila["Año"] = año
