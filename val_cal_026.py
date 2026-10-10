@@ -126,7 +126,7 @@ ORDEN_COLUMNAS = [
     "Archivo",
     "Departamento", "Municipio", "Divipola", "Radiacion",
     "Tipo de Sistema", "Almacenamiento", "Whd", "llave",
-    "IPP_base", "IPPm_1",
+    "IPP_base", "IPPm_1", "factor_actualizacion",
     "Cartera vencida 90_360", "Cartera_Subs", "Tasa_Costo_Fin",
     "AMGCnu_0", "AMGCvi_0", "AMGCau_0", "AMGCnf_0", "AMGCro_0",
     "AMGCnu_m", "AMGCvi_m", "AMGCau_m", "AMGCnf_m", "AMGCro_m",
@@ -155,7 +155,7 @@ def extraer_fila(df: pd.DataFrame, nombre_archivo: str) -> dict:
 
 
 def calcular_campos_derivados(fila: dict) -> dict:
-    """Calcula los campos derivados: llave, tarifa_dia, fact_dia e I_0."""
+    """Calcula los campos derivados: llave, tarifa_dia, fact_dia, I_0 y factor_actualizacion."""
     # llave = Divipola + Whd + sufijo según el nombre del archivo
     divipola = fila.get("Divipola", "")
     whd      = fila.get("Whd", "")
@@ -180,6 +180,12 @@ def calcular_campos_derivados(fila: dict) -> dict:
         fila["I_0"] = float(fila["Inversio"]) * (float(fila["IPP_base"]) / float(fila["IPPm_1"]))
     except (TypeError, ValueError, ZeroDivisionError):
         fila["I_0"] = None
+
+    # factor_actualizacion = IPPm_1 / IPP_base
+    try:
+        fila["factor_actualizacion"] = float(fila["IPPm_1"]) / float(fila["IPP_base"])
+    except (TypeError, ValueError, ZeroDivisionError):
+        fila["factor_actualizacion"] = None
 
     return fila
 
