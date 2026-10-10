@@ -15,6 +15,27 @@ with col2:
 
 IPP_BASE = 147.65
 
+# ── Sufijos de la llave según el nombre del archivo ─────────────────────────
+# Se evalúan de más largo a más corto para que la coincidencia más específica gane
+SUFIJOS_LLAVE = {
+    "Inversion_Controlador_Baterias_Inversor": "conbatin",
+    "Inversion_Controlador_Baterias":          "conbat",
+    "Inversion_Controlador_Inversor":          "conin",
+    "Inversion_Baterias_Inversor":             "batin",
+    "Inversion_Controlador":                   "con",
+    "Inversion_Baterias":                      "in",
+    "Inversion_Inversor":                      "inver",
+}
+
+
+def sufijo_llave(nombre_archivo: str) -> str:
+    """Devuelve el sufijo de la llave según el patrón contenido en el nombre del archivo."""
+    nombre = nombre_archivo.lower()
+    for patron in sorted(SUFIJOS_LLAVE, key=len, reverse=True):
+        if patron.lower() in nombre:
+            return SUFIJOS_LLAVE[patron]
+    return ""
+
 # ── Mapa de celdas: nombre → (fila, columna) ────────────────────────────────
 CELDAS = {
     "Departamento":            (5,   1),
@@ -85,10 +106,10 @@ def extraer_fila(df: pd.DataFrame, nombre_archivo: str) -> dict:
 
 def calcular_campos_derivados(fila: dict) -> dict:
     """Calcula los campos derivados: llave, tarifa_dia, fact_dia e I_0."""
-    # llave = Divipola + Whd
+    # llave = Divipola + Whd + sufijo según el nombre del archivo
     divipola = fila.get("Divipola", "")
     whd      = fila.get("Whd", "")
-    fila["llave"] = f"{divipola}{whd}"
+    fila["llave"] = f"{divipola}{whd}{sufijo_llave(fila.get('Archivo', ''))}"
 
     # tarifa_dia = Tarifa_mes / Disponibilidad
     try:
